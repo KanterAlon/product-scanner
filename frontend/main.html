@@ -1,107 +1,136 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Detector de Productos (Cámara)</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Detector de Productos</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 2rem;
-      background-color: #f9f9f9;
-    }
-    h1 {
-      color: #333;
-    }
-    video, canvas {
-      max-width: 300px;
-      border: 1px solid #ccc;
-      margin-top: 1rem;
-    }
-    #result {
-      margin-top: 1.5rem;
-      padding: 1rem;
-      background: #fff;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    button {
-      margin-top: 1rem;
-      padding: 0.5rem 1rem;
-    }
+    body { font-family: Arial,sans-serif; margin:2rem; background:#f9f9f9 }
+    h1 { color:#333 }
+    #result { display:flex; gap:2rem; margin-top:1.5rem }
+    .panel { flex:1; padding:1rem; background:#fff; border:1px solid #ccc; border-radius:4px; overflow:auto; max-height:600px }
+    .panel h2 { margin-top:0; color:#555 }
+    video,canvas { max-width:300px; border:1px solid #ccc; margin-top:1rem }
+    button { margin-top:1rem; padding:0.5rem 1rem }
+    pre { white-space:pre-wrap; background:#f0f0f0; padding:0.5rem; border-radius:4px }
   </style>
 </head>
 <body>
   <h1>Detector de Productos</h1>
-
   <video id="video" autoplay playsinline></video><br/>
   <button id="capture-btn">📸 Capturar y Buscar</button>
-
   <canvas id="canvas" style="display:none;"></canvas>
 
-  <div id="result"></div>
+  <div id="result">
+    <div class="panel">
+      <h2>Vision API</h2>
+      <h3>Códigos de barras</h3><ul id="barcode-list"></ul>
+      <h3>Logos</h3><ul id="logo-list"></ul>
+      <h3>Texto OCR</h3><ul id="text-list"></ul>
+      <h3>Web Entities</h3><ul id="webentity-list"></ul>
+      <h3>Labels</h3><ul id="label-list"></ul>
+      <h3>Objects</h3><ul id="object-list"></ul>
+    </div>
+
+    <div class="panel">
+      <h2>OpenAI (IA intermedia)</h2>
+      <h3>Prompt enviado</h3>
+      <pre id="ai-prompt"></pre>
+      <h3>Respuesta de OpenAI</h3>
+      <pre id="ai-response"></pre>
+
+      <h2>Pipeline resumen</h2>
+      <p id="pipeline-summary" style="font-style:italic; color:#444"></p>
+
+      <h2>OpenFoodFacts</h2>
+      <div id="off-status"></div>
+      <pre id="off-data"></pre>
+    </div>
+  </div>
 
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const resultDiv = document.getElementById('result');
-    const captureBtn = document.getElementById('capture-btn');
+    const video         = document.getElementById('video');
+    const canvas        = document.getElementById('canvas');
+    const barcodeList   = document.getElementById('barcode-list');
+    const logoList      = document.getElementById('logo-list');
+    const textList      = document.getElementById('text-list');
+    const webEntityList = document.getElementById('webentity-list');
+    const labelList     = document.getElementById('label-list');
+    const objectList    = document.getElementById('object-list');
+    const aiPrompt      = document.getElementById('ai-prompt');
+    const aiResponse    = document.getElementById('ai-response');
+    const pipelineSummary = document.getElementById('pipeline-summary');
+    const offStatus     = document.getElementById('off-status');
+    const offData       = document.getElementById('off-data');
+    const btn           = document.getElementById('capture-btn');
 
-    // Intentar acceder a la cámara
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => {
-        video.srcObject = stream;
-      })
-      .catch(err => {
-        alert('No se pudo acceder a la cámara: ' + err.message);
-        console.error(err);
-      });
+    navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } })
+      .then(s => video.srcObject = s)
+      .catch(e => alert('Error cámara: '+e.message));
 
-    captureBtn.addEventListener('click', async () => {
+    btn.onclick = () => {
       const ctx = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
+      canvas.width  = video.videoWidth;
       canvas.height = video.videoHeight;
+      if (!canvas.width || !canvas.height) return alert('No se pudo capturar la imagen');
 
-      if (canvas.width === 0 || canvas.height === 0) {
-        resultDiv.textContent = 'Error: No se pudo capturar imagen. ¿La cámara está activa?';
-        return;
-      }
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      canvas.toBlob(async blob => {
+        if (!blob) return alert('Error al procesar imagen');
 
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // loading...
+        [barcodeList,logoList,textList,webEntityList,labelList,objectList]
+          .forEach(ul => ul.innerHTML = '<li>Cargando…</li>');
+        aiPrompt.textContent      = '…';
+        aiResponse.textContent    = '…';
+        pipelineSummary.textContent = '';
+        offStatus.textContent     = 'Buscando…';
+        offData.textContent       = '';
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          resultDiv.textContent = 'Error: No se pudo crear imagen desde la cámara.';
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append('image', blob, 'captura.jpg');
-
-        resultDiv.textContent = 'Cargando...';
+        const fd = new FormData();
+        fd.append('image', blob, 'captura.jpg');
 
         try {
-          const response = await fetch('http://localhost:5000/upload', {
-            method: 'POST',
-            body: formData,
-          });
+          const res = await fetch('http://localhost:5000/upload',{ method:'POST', body:fd });
+          if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+          const d = await res.json();
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Error en el servidor');
+          // Vision
+          barcodeList.innerHTML   = '';
+          d.vision.barcodes.forEach(b => { const li=document.createElement('li'); li.textContent = b; barcodeList.append(li); });
+          logoList.innerHTML      = '';
+          d.vision.logos.forEach(l=>{ const li=document.createElement('li'); li.textContent = `${l.name} (${l.score.toFixed(2)})`; logoList.append(li); });
+          textList.innerHTML      = '';
+          d.vision.text.split('\n').filter(Boolean).forEach(t=>{const li=document.createElement('li'); li.textContent = t; textList.append(li);});
+          webEntityList.innerHTML = '';
+          d.vision.webEnts.forEach(w=>{const li=document.createElement('li'); li.textContent = `${w.desc} (${w.score.toFixed(2)})`; webEntityList.append(li);});
+          labelList.innerHTML     = '';
+          d.vision.labels.forEach(l=>{const li=document.createElement('li'); li.textContent = `${l.desc} (${l.score.toFixed(2)})`; labelList.append(li);});
+          objectList.innerHTML    = '';
+          d.vision.objects.forEach(o=>{const li=document.createElement('li'); li.textContent = o; objectList.append(li);});
+
+          // OpenAI
+          aiPrompt.textContent   = d.ai.prompt;
+          aiResponse.textContent = d.ai.response;
+
+          // Pipeline summary
+          pipelineSummary.textContent =
+            `Agarré los datos de Vision, envié este prompt a ChatGPT, ChatGPT devolvió este término, y con él busqué en OFF.`;
+
+          // OpenFoodFacts
+          if (d.off.found) {
+            offStatus.textContent = `✅ Encontrado (método: ${d.off.method})`;
+            offData.textContent   = JSON.stringify(d.off.data, null, 2);
+          } else {
+            offStatus.textContent = `❌ No se encontró (término: "${d.ai.response}")`;
+            offData.textContent   = '';
           }
 
-          const data = await response.json();
-          resultDiv.innerHTML = `
-            <h2>Producto Detectado: ${data.producto_detectado}</h2>
-            <h3>Datos de OpenFoodFacts:</h3>
-            <pre>${JSON.stringify(data.datos_openfoodfacts, null, 2)}</pre>
-          `;
-        } catch (err) {
-          resultDiv.textContent = `Error: ${err.message}`;
+        } catch(err) {
+          alert('Error: '+err.message);
         }
       }, 'image/jpeg');
-    });
+    };
   </script>
 </body>
 </html>

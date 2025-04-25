@@ -1,62 +1,168 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // ⚠️ Solo para pruebas en desarrollo
-require('dotenv').config();
-process.env.GOOGLE_APPLICATION_CREDENTIALS = __dirname + '/credentials/google-vision.json'; // 👈 Add this
+// backend/index.js
 
+// ⚠️ Solo para desarrollo: desactiva la verificación TLS (no usar en producción)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+require('dotenv').config();
+
+const path    = require('path');
 const express = require('express');
 const multer  = require('multer');
 const cors    = require('cors');
 const axios   = require('axios');
 const vision  = require('@google-cloud/vision');
 
-const app    = express();
+const app = express();
 app.use(cors());
 
-// cliente Vision (ImageAnnotator para webDetection)
-const client = new vision.ImageAnnotatorClient();
+// Ruta a credenciales de Google Vision
+process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(
+  __dirname, 'credentials', 'google-vision.json'
+);
 
-// multer en memoria
-const upload = multer({ storage: multer.memoryStorage() });
+// URLs de OpenFoodFacts
+const OFF_PROD_URL   = process.env.OPENFOODFACTS_PRODUCT_URL;
+const OFF_SEARCH_URL = process.env.OPENFOODFACTS_SEARCH_URL;
+
+const visionClient = new vision.ImageAnnotatorClient();
+const upload       = multer({ storage: multer.memoryStorage() });
+
+// Helper: buscar en OFF por texto
+async function searchOFF(terms) {
+  const res = await axios.get(OFF_SEARCH_URL, {
+    params: { search_terms: terms, search_simple: 1, action: 'process', json: 1 }
+  });
+  return res.data.count > 0 ? res.data : null;
+}
 
 app.post('/upload', upload.single('image'), async (req, res) => {
   try {
-    if (!req.file) throw new Error('No file uploaded');
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
     const buffer = req.file.buffer;
 
-    // 1) Detectar entidades web en la imagen
-    const [result] = await client.annotateImage({
+    // 1) Google Vision con multiple features
+    const [vResp] = await visionClient.annotateImage({
       image: { content: buffer },
-      features: [{ type: 'WEB_DETECTION', maxResults: 5 }],
+      features: [
+        { type: 'BARCODE_DETECTION' },
+        { type: 'LOGO_DETECTION',       maxResults: 5 },
+        { type: 'DOCUMENT_TEXT_DETECTION' },
+        { type: 'WEB_DETECTION',        maxResults: 5 },
+        { type: 'LABEL_DETECTION',      maxResults: 10 },
+        { type: 'OBJECT_LOCALIZATION'   }
+      ]
     });
-    const entities = result.webDetection.webEntities || [];
-    if (!entities.length) {
-      return res.status(404).json({ error: 'No se reconoció ningún producto' });
-    }
-    // Tomar la entidad con más relevancia
-    const productName = entities[0].description;
 
-    // 2) Buscar en OpenFoodFacts
-    const offRes = await axios.get(process.env.OPENFOODFACTS_API_URL, {
-      params: {
-        search_terms: productName,
-        search_simple: 1,
-        action: 'process',
-        json: 1,
+    // 2) Parsear resultados
+    const barcodes = (vResp.barcodeAnnotations || []).map(b => b.rawValue);
+    const logos    = (vResp.logoAnnotations    || []).map(l => ({
+      name:  l.description,
+      score: l.score
+    }));
+    const text     = vResp.fullTextAnnotation?.text?.trim() || '';
+    const webEnts  = (vResp.webDetection?.webEntities || []).map(e => ({
+      desc:  e.description,
+      score: e.score
+    }));
+    const labels   = (vResp.labelAnnotations || []).map(l => ({
+      desc:  l.description,
+      score: l.score
+    }));
+    const objects  = (vResp.localizedObjectAnnotations || []).map(o => o.name);
+
+    const visionData = { barcodes, logos, text, webEnts, labels, objects };
+
+    // 3) Prompt reforzado para español y marcas reales
+    // 3) Prompt reforzado para término cortísimo
+const prompt = `
+Eres un asistente en ESPAÑOL que recibe un JSON con datos de Google Vision y debe extraer el TÉRMINO DE BÚSQUEDA MÁS CORTO Y ÚTIL para OpenFoodFacts.  
+**Solo incluye la marca (si es reconocida) y el nombre genérico del producto en SINGULAR.**  
+**No incluyas sabores, presentaciones, variantes, cantidades ni adjetivos adicionales.**
+
+Ejemplos (INPUT → OUTPUT):
+1) "Barritas Íntegra de Proteína con Arándanos y Semillas" → "Barrita Íntegra"  
+2) "Font Vella Agua Mineral Natural" → "Font Vella Agua Mineral"  
+3) "Nestlé Chocolate KitKat 4 barras" → "KitKat"  
+
+Ahora, procesa este JSON y devuelve **solo** la línea con el término (sin comillas ni nada más):
+
+\`\`\`json
+${JSON.stringify(visionData, null, 2)}
+\`\`\`
+`.trim();
+
+    // 4) Chat completions con gpt-3.5-turbo
+    const aiResp = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role:    'system',
+            content: 'Eres un asistente que genera términos de búsqueda para OpenFoodFacts, en español y con marcas reales.'
+          },
+          {
+            role:    'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.2,
+        max_tokens: 32
+      },
+      {
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        }
+      }
+    );
+
+    const aiResponse = aiResp.data.choices[0].message.content.trim();
+
+    // 5) Intento por código de barras
+    let offData   = null;
+    let offMethod = null;
+
+    if (barcodes.length) {
+      try {
+        const byCode = await axios.get(`${OFF_PROD_URL}/${encodeURIComponent(barcodes[0])}.json`);
+        if (byCode.data.status === 1) {
+          offData   = byCode.data.product;
+          offMethod = 'barcode';
+        }
+      } catch (e) {
+        console.warn('OFF by barcode failed:', e.message);
+      }
+    }
+
+    // 6) Fallback con término IA en español
+    if (!offData) {
+      const offSearch = await searchOFF(aiResponse);
+      if (offSearch) {
+        offData   = offSearch.products?.[0] || offSearch;
+        offMethod = 'search';
+      }
+    }
+
+    // 7) Responder con pipeline completo
+    res.json({
+      vision: visionData,
+      ai: {
+        prompt,
+        response: aiResponse
+      },
+      off: {
+        found:  !!offData,
+        method: offMethod,
+        data:   offData
       }
     });
-
-    // 3) Enviar resultado
-    return res.json({
-      producto_detectado: productName,
-      datos_openfoodfacts: offRes.data
-    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message || 'Error interno' });
+    console.error('Error en /upload:', err);
+    res.status(500).json({ error: err.message || 'Internal error' });
   }
 });
 
-// Iniciar servidor
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Backend escuchando en http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Backend escuchando en http://localhost:${PORT}`));
