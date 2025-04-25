@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Detector de Productos</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Detector de Productos (Cámara)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -13,15 +13,10 @@
     h1 {
       color: #333;
     }
-    form {
-      margin-bottom: 1rem;
-    }
-    #preview img {
+    video, canvas {
       max-width: 300px;
-      margin-top: 1rem;
       border: 1px solid #ccc;
-      padding: 0.5rem;
-      background: #fff;
+      margin-top: 1rem;
     }
     #result {
       margin-top: 1.5rem;
@@ -30,68 +25,82 @@
       border: 1px solid #ccc;
       border-radius: 4px;
     }
-    pre {
-      white-space: pre-wrap;
-      word-wrap: break-word;
+    button {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
     }
   </style>
 </head>
 <body>
   <h1>Detector de Productos</h1>
-  <form id="upload-form">
-    <input type="file" accept="image/*" id="image-input" name="image" required />
-    <button type="submit">Subir Imagen</button>
-  </form>
-  <div id="preview"></div>
+
+  <video id="video" autoplay playsinline></video><br/>
+  <button id="capture-btn">📸 Capturar y Buscar</button>
+
+  <canvas id="canvas" style="display:none;"></canvas>
+
   <div id="result"></div>
 
   <script>
-    const form = document.getElementById('upload-form');
-    const preview = document.getElementById('preview');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
     const resultDiv = document.getElementById('result');
-    const input = document.getElementById('image-input');
+    const captureBtn = document.getElementById('capture-btn');
 
-    // Mostrar vista previa de la imagen seleccionada
-    input.addEventListener('change', () => {
-      const file = input.files[0];
-      preview.innerHTML = '';
-      if (file) {
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(file);
-        preview.appendChild(img);
+    // Intentar acceder a la cámara
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(err => {
+        alert('No se pudo acceder a la cámara: ' + err.message);
+        console.error(err);
+      });
+
+    captureBtn.addEventListener('click', async () => {
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      if (canvas.width === 0 || canvas.height === 0) {
+        resultDiv.textContent = 'Error: No se pudo capturar imagen. ¿La cámara está activa?';
+        return;
       }
-    });
 
-    // Enviar formulario al backend
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const file = input.files[0];
-      if (!file) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      resultDiv.textContent = 'Cargando...';
-      const formData = new FormData();
-      formData.append('image', file);
-
-      try {
-        const response = await fetch('http://localhost:5000/upload', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Error en el servidor');
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          resultDiv.textContent = 'Error: No se pudo crear imagen desde la cámara.';
+          return;
         }
 
-        const data = await response.json();
-        resultDiv.innerHTML = `
-          <h2>Producto Detectado: ${data.producto_detectado}</h2>
-          <h3>Datos de OpenFoodFacts:</h3>
-          <pre>${JSON.stringify(data.datos_openfoodfacts, null, 2)}</pre>
-        `;
-      } catch (err) {
-        resultDiv.textContent = `Error: ${err.message}`;
-      }
+        const formData = new FormData();
+        formData.append('image', blob, 'captura.jpg');
+
+        resultDiv.textContent = 'Cargando...';
+
+        try {
+          const response = await fetch('http://localhost:5000/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error en el servidor');
+          }
+
+          const data = await response.json();
+          resultDiv.innerHTML = `
+            <h2>Producto Detectado: ${data.producto_detectado}</h2>
+            <h3>Datos de OpenFoodFacts:</h3>
+            <pre>${JSON.stringify(data.datos_openfoodfacts, null, 2)}</pre>
+          `;
+        } catch (err) {
+          resultDiv.textContent = `Error: ${err.message}`;
+        }
+      }, 'image/jpeg');
     });
   </script>
 </body>

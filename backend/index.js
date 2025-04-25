@@ -1,4 +1,7 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // ⚠️ Solo para pruebas en desarrollo
 require('dotenv').config();
+process.env.GOOGLE_APPLICATION_CREDENTIALS = __dirname + '/credentials/google-vision.json'; // 👈 Add this
+
 const express = require('express');
 const multer  = require('multer');
 const cors    = require('cors');
