@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Detector de Productos</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      color: #333;
+    }
+    form {
+      margin-bottom: 1rem;
+    }
+    #preview img {
+      max-width: 300px;
+      margin-top: 1rem;
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      background: #fff;
+    }
+    #result {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <h1>Detector de Productos</h1>
+  <form id="upload-form">
+    <input type="file" accept="image/*" id="image-input" name="image" required />
+    <button type="submit">Subir Imagen</button>
+  </form>
+  <div id="preview"></div>
+  <div id="result"></div>
+
+  <script>
+    const form = document.getElementById('upload-form');
+    const preview = document.getElementById('preview');
+    const resultDiv = document.getElementById('result');
+    const input = document.getElementById('image-input');
+
+    // Mostrar vista previa de la imagen seleccionada
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      preview.innerHTML = '';
+      if (file) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        preview.appendChild(img);
+      }
+    });
+
+    // Enviar formulario al backend
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const file = input.files[0];
+      if (!file) return;
+
+      resultDiv.textContent = 'Cargando...';
+      const formData = new FormData();
+      formData.append('image', file);
+
+      try {
+        const response = await fetch('http://localhost:5000/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error en el servidor');
+        }
+
+        const data = await response.json();
+        resultDiv.innerHTML = `
+          <h2>Producto Detectado: ${data.producto_detectado}</h2>
+          <h3>Datos de OpenFoodFacts:</h3>
+          <pre>${JSON.stringify(data.datos_openfoodfacts, null, 2)}</pre>
+        `;
+      } catch (err) {
+        resultDiv.textContent = `Error: ${err.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
