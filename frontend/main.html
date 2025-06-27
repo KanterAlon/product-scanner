@@ -7,14 +7,17 @@
   <style>
     body { font-family: Arial,sans-serif; margin:2rem; background:#f9f9f9 }
     h1 { color:#333 }
-    #top { display:flex; gap:2rem; align-items:flex-start }
-    #result { display:flex; gap:2rem; margin-top:1.5rem }
-    .panel { flex:1; padding:1rem; background:#fff; border:1px solid #ccc; border-radius:4px; overflow:auto; max-height:600px }
-    .panel h2 { margin-top:0; color:#555 }
+    #top { display:flex; flex-wrap:wrap; gap:2rem; align-items:flex-start; justify-content:center }
+    #result { display:flex; flex-wrap:wrap; gap:2rem; margin-top:1.5rem; align-items:flex-start }
+    .panel { flex:1; min-width:280px; min-height:40vh; padding:1rem; background:#fff; border:1px solid #ccc; border-radius:4px; overflow:auto; display:flex; flex-direction:column }
+    .panel h2 { margin-top:0; color:#555; display:flex; align-items:center; gap:0.5rem }
+    .logo { width:24px; height:24px }
+    .step-desc { font-style:italic; color:#444; margin:0 0 0.5rem }
     video,canvas { max-width:300px; border:1px solid #ccc; margin-top:1rem }
     button { margin-top:1rem; padding:0.5rem 1rem }
     pre { white-space:pre-wrap; background:#f0f0f0; padding:0.5rem; border-radius:4px }
     #final-term { flex:1; font-size:2rem; font-weight:bold; color:#222; background:#fffbe6; border:2px solid #f0d000; border-radius:4px; padding:1rem; min-height:100px; display:flex; align-items:center; justify-content:center; text-align:center }
+    .arrow { font-size:2rem; display:flex; align-items:center; }
   </style>
 </head>
 <body>
@@ -24,13 +27,16 @@
       <video id="video" autoplay playsinline></video><br/>
       <button id="capture-btn">📸 Capturar y Buscar</button>
     </div>
+    <div class="arrow">→</div>
     <div id="final-term">Esperando captura…</div>
   </div>
+  <div class="arrow" style="justify-content:center;">↓</div>
   <canvas id="canvas" style="display:none;"></canvas>
 
   <div id="result">
     <div class="panel">
-      <h2>Vision API</h2>
+      <h2><img class="logo" src="https://www.gstatic.com/images/branding/product/1x/cloud_vision_48dp.png" alt="Google Vision"/>Google Vision</h2>
+      <p class="step-desc">Analiza la imagen y reconoce códigos de barras, logos, texto y objetos.</p>
       <h3>Códigos de barras</h3><ul id="barcode-list"></ul>
       <h3>Logos</h3><ul id="logo-list"></ul>
       <h3>Texto OCR</h3><ul id="text-list"></ul>
@@ -39,19 +45,26 @@
       <h3>Objects</h3><ul id="object-list"></ul>
     </div>
 
+    <div class="arrow">→</div>
+
     <div class="panel">
-      <h2>OpenAI (IA intermedia)</h2>
-      <h3>Prompt enviado</h3>
-      <pre id="ai-prompt"></pre>
+      <h2><img class="logo" src="https://openai.com/favicon.ico" alt="OpenAI"/>OpenAI</h2>
+      <p class="step-desc">Toma los datos de Vision y genera un término para buscar en OpenFoodFacts.</p>
+      <details>
+        <summary>Prompt enviado</summary>
+        <pre id="ai-prompt"></pre>
+      </details>
       <h3>Respuesta de OpenAI</h3>
       <pre id="ai-response"></pre>
 
-      <h2>Pipeline resumen</h2>
-      <p id="pipeline-summary" style="font-style:italic; color:#444"></p>
-
       <h2>OpenFoodFacts</h2>
       <div id="off-status"></div>
-      <pre id="off-data"></pre>
+      <details>
+        <summary>Ver datos</summary>
+        <pre id="off-data"></pre>
+      </details>
+
+      <p id="pipeline-summary" style="font-style:italic; color:#444"></p>
     </div>
   </div>
 
@@ -124,8 +137,7 @@
           finalTerm.textContent  = d.ai.response;
 
           // Pipeline summary
-          pipelineSummary.textContent =
-            `Agarré los datos de Vision, envié este prompt a ChatGPT, ChatGPT devolvió este término, y con él busqué en OFF.`;
+          pipelineSummary.textContent = '📷 → Google Vision → OpenAI → 🛒 OFF';
 
           // OpenFoodFacts
           if (d.off.found) {
