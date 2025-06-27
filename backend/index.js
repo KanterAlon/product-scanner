@@ -18,7 +18,7 @@ app.use(cors());
 process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(
   __dirname, 'credentials', 'google-vision.json'
 );
-
+console.log(process.env.OPENAI_API_KEY)
 // URLs de OpenFoodFacts
 const OFF_PROD_URL   = process.env.OPENFOODFACTS_PRODUCT_URL;
 const OFF_SEARCH_URL = process.env.OPENFOODFACTS_SEARCH_URL;
