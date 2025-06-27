@@ -9,6 +9,10 @@
     h1 { color:#333 }
     #top { display:flex; flex-wrap:wrap; gap:2rem; align-items:flex-start; justify-content:center }
     #result { display:flex; flex-wrap:wrap; gap:2rem; margin-top:1.5rem }
+    #info { display:flex; flex-direction:column; gap:.5rem; background:#fff; padding:1rem; border:1px solid #ccc; border-radius:4px; margin-bottom:1.5rem }
+    #info .step { display:flex; align-items:center; gap:.5rem }
+    #info .logo { width:40px; height:40px }
+    #info p { margin:0; color:#333 }
     .panel { flex:1; min-width:280px; min-height:300px; padding:1rem; background:#fff; border:1px solid #ccc; border-radius:4px; overflow:auto }
     .panel h2 { margin-top:0; color:#555 }
     video,canvas { max-width:300px; border:1px solid #ccc; margin-top:1rem }
@@ -20,6 +24,19 @@
 </head>
 <body>
   <h1>Detector de Productos</h1>
+
+  <section id="info">
+    <h2>¿Cómo funciona?</h2>
+    <div class="step">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg" alt="Google" class="logo"/>
+      <p><strong>Google Vision</strong> analiza la foto y reconoce códigos de barras, logos, texto, objetos y etiquetas.</p>
+    </div>
+    <div class="step">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/4/4b/OpenAI_Logo.svg" alt="OpenAI" class="logo"/>
+      <p><strong>OpenAI</strong> toma esos datos y genera un término corto para buscar en la base de productos.</p>
+    </div>
+    <p style="text-align:center; font-size:1.2rem;">📷 → Vision → ChatGPT → 🛒</p>
+  </section>
   <div id="top">
     <div id="camera">
       <video id="video" autoplay playsinline></video><br/>
