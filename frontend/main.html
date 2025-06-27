@@ -7,18 +7,25 @@
   <style>
     body { font-family: Arial,sans-serif; margin:2rem; background:#f9f9f9 }
     h1 { color:#333 }
+    #top { display:flex; gap:2rem; align-items:flex-start }
     #result { display:flex; gap:2rem; margin-top:1.5rem }
     .panel { flex:1; padding:1rem; background:#fff; border:1px solid #ccc; border-radius:4px; overflow:auto; max-height:600px }
     .panel h2 { margin-top:0; color:#555 }
     video,canvas { max-width:300px; border:1px solid #ccc; margin-top:1rem }
     button { margin-top:1rem; padding:0.5rem 1rem }
     pre { white-space:pre-wrap; background:#f0f0f0; padding:0.5rem; border-radius:4px }
+    #final-term { flex:1; font-size:2rem; font-weight:bold; color:#222; background:#fffbe6; border:2px solid #f0d000; border-radius:4px; padding:1rem; min-height:100px; display:flex; align-items:center; justify-content:center; text-align:center }
   </style>
 </head>
 <body>
   <h1>Detector de Productos</h1>
-  <video id="video" autoplay playsinline></video><br/>
-  <button id="capture-btn">📸 Capturar y Buscar</button>
+  <div id="top">
+    <div id="camera">
+      <video id="video" autoplay playsinline></video><br/>
+      <button id="capture-btn">📸 Capturar y Buscar</button>
+    </div>
+    <div id="final-term">Esperando captura…</div>
+  </div>
   <canvas id="canvas" style="display:none;"></canvas>
 
   <div id="result">
@@ -59,6 +66,7 @@
     const objectList    = document.getElementById('object-list');
     const aiPrompt      = document.getElementById('ai-prompt');
     const aiResponse    = document.getElementById('ai-response');
+    const finalTerm     = document.getElementById('final-term');
     const pipelineSummary = document.getElementById('pipeline-summary');
     const offStatus     = document.getElementById('off-status');
     const offData       = document.getElementById('off-data');
@@ -83,6 +91,7 @@
           .forEach(ul => ul.innerHTML = '<li>Cargando…</li>');
         aiPrompt.textContent      = '…';
         aiResponse.textContent    = '…';
+        finalTerm.textContent     = 'Procesando…';
         pipelineSummary.textContent = '';
         offStatus.textContent     = 'Buscando…';
         offData.textContent       = '';
@@ -112,6 +121,7 @@
           // OpenAI
           aiPrompt.textContent   = d.ai.prompt;
           aiResponse.textContent = d.ai.response;
+          finalTerm.textContent  = d.ai.response;
 
           // Pipeline summary
           pipelineSummary.textContent =
@@ -127,6 +137,7 @@
           }
 
         } catch(err) {
+          finalTerm.textContent = 'Error';
           alert('Error: '+err.message);
         }
       }, 'image/jpeg');
