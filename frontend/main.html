@@ -93,11 +93,24 @@
     const offData       = document.getElementById('off-data');
     const btn           = document.getElementById('capture-btn');
 
+    let resetTimer;
+    function resetUI() {
+      [barcodeList,logoList,textList,webEntityList,labelList,objectList]
+        .forEach(ul => ul.innerHTML = '');
+      aiPrompt.textContent      = '';
+      aiResponse.textContent    = '';
+      finalTerm.textContent     = 'Esperando captura…';
+      pipelineSummary.textContent = '';
+      offStatus.textContent     = '';
+      offData.textContent       = '';
+    }
+
     navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } })
       .then(s => video.srcObject = s)
       .catch(e => alert('Error cámara: '+e.message));
 
     btn.onclick = () => {
+      clearTimeout(resetTimer);
       const ctx = canvas.getContext('2d');
       canvas.width  = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -156,9 +169,12 @@
             offData.textContent   = '';
           }
 
+          resetTimer = setTimeout(resetUI, 10000);
+
         } catch(err) {
           finalTerm.textContent = 'Error';
           alert('Error: '+err.message);
+          resetTimer = setTimeout(resetUI, 10000);
         }
       }, 'image/jpeg');
     };
