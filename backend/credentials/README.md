@@ -1,0 +1,1 @@
+Coloca aquí el archivo `google-vision.json` con las credenciales de tu cuenta de servicio de Google Cloud. Puedes descargarlo desde la consola de Google Cloud al crear una clave para la API de Vision.

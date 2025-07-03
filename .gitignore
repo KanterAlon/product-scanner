@@ -1,2 +1,2 @@
-"backend/.env" 
 backend/.env
+backend/credentials/google-vision.json
