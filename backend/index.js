@@ -18,7 +18,6 @@ app.use(cors());
 process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(
   __dirname, 'credentials', 'google-vision.json'
 );
-console.log(process.env.OPENAI_API_KEY)
 // URLs de OpenFoodFacts
 const OFF_PROD_URL   = process.env.OPENFOODFACTS_PRODUCT_URL;
 const OFF_SEARCH_URL = process.env.OPENFOODFACTS_SEARCH_URL;
@@ -28,10 +27,15 @@ const upload       = multer({ storage: multer.memoryStorage() });
 
 // Helper: buscar en OFF por texto
 async function searchOFF(terms) {
-  const res = await axios.get(OFF_SEARCH_URL, {
-    params: { search_terms: terms, search_simple: 1, action: 'process', json: 1 }
-  });
-  return res.data.count > 0 ? res.data : null;
+  try {
+    const res = await axios.get(OFF_SEARCH_URL, {
+      params: { search_terms: terms, search_simple: 1, action: 'process', json: 1 }
+    });
+    return res.data.count > 0 ? res.data : null;
+  } catch (err) {
+    console.error('Error al conectar con OpenFoodFacts:', err.message);
+    return null;
+  }
 }
 
 app.post('/upload', upload.single('image'), async (req, res) => {
@@ -42,17 +46,23 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     const buffer = req.file.buffer;
 
     // 1) Google Vision con múltiples features
-    const [vResp] = await visionClient.annotateImage({
-      image: { content: buffer },
-      features: [
-        { type: 'BARCODE_DETECTION' },
-        { type: 'LOGO_DETECTION',    maxResults: 5 },
-        { type: 'DOCUMENT_TEXT_DETECTION' },
-        { type: 'WEB_DETECTION',     maxResults: 5 },
-        { type: 'LABEL_DETECTION',   maxResults: 10 },
-        { type: 'OBJECT_LOCALIZATION' }
-      ]
-    });
+    let vResp;
+    try {
+      [vResp] = await visionClient.annotateImage({
+        image: { content: buffer },
+        features: [
+          { type: 'BARCODE_DETECTION' },
+          { type: 'LOGO_DETECTION',    maxResults: 5 },
+          { type: 'DOCUMENT_TEXT_DETECTION' },
+          { type: 'WEB_DETECTION',     maxResults: 5 },
+          { type: 'LABEL_DETECTION',   maxResults: 10 },
+          { type: 'OBJECT_LOCALIZATION' }
+        ]
+      });
+    } catch (err) {
+      console.error('Error al conectar con Google Vision:', err.message);
+      return res.status(502).json({ error: 'Google Vision: ' + err.message });
+    }
 
     // 2) Parsear resultados
     const barcodes = (vResp.barcodeAnnotations || []).map(b => b.rawValue);
@@ -95,24 +105,30 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     
 
     // 4) Chat completions con gpt-3.5-turbo
-    const aiResp = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: 'Eres un asistente que genera términos de búsqueda para OpenFoodFacts, en español y con marcas reales.' },
-          { role: 'user',   content: prompt }
-        ],
-        temperature: 0.2,
-        max_tokens: 32
-      },
-      {
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+    let aiResp;
+    try {
+      aiResp = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: 'Eres un asistente que genera términos de búsqueda para OpenFoodFacts, en español y con marcas reales.' },
+            { role: 'user',   content: prompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 32
+        },
+        {
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+          }
         }
-      }
-    );
+      );
+    } catch (err) {
+      console.error('Error al conectar con OpenAI:', err.message);
+      return res.status(502).json({ error: 'OpenAI: ' + err.message });
+    }
 
     const aiResponse = aiResp.data.choices[0].message.content.trim();
 
@@ -127,8 +143,8 @@ app.post('/upload', upload.single('image'), async (req, res) => {
           offData   = byCode.data.product;
           offMethod = 'barcode';
         }
-      } catch (e) {
-        console.warn('OFF by barcode failed:', e.message);
+      } catch (err) {
+        console.error('Error en OpenFoodFacts por código de barras:', err.message);
       }
     }
 
@@ -148,7 +164,7 @@ app.post('/upload', upload.single('image'), async (req, res) => {
       off: { found: !!offData, method: offMethod, data: offData }
     });
   } catch (err) {
-    console.error('Error en /upload:', err);
+    console.error('Error en /upload:', err.message);
     res.status(500).json({ error: err.message || 'Internal error' });
   }
 });
