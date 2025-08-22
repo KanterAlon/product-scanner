@@ -1,0 +1,14 @@
+{
+  "name": "product-scanner",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix backend install --silent",
+    "dev:backend": "npm --prefix backend run dev --silent",
+    "dev:frontend": "live-server frontend --quiet",
+    "dev": "concurrently --kill-others --raw \"npm run dev:backend\" \"npm run dev:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "live-server": "^1.2.2"
+  }
+}
