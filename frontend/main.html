@@ -28,6 +28,7 @@
     <div id="camera">
       <video id="video" autoplay playsinline></video><br/>
       <button id="capture-btn">📸 Capturar y Buscar</button>
+      <button id="test-btn">🧪 Probar Imagen</button>
     </div>
   </div>
 
@@ -36,10 +37,11 @@
   <div id="results"></div>
 
   <script>
-    const video   = document.getElementById('video');
-    const canvas  = document.getElementById('canvas');
-    const btn     = document.getElementById('capture-btn');
-    const results = document.getElementById('results');
+    const video    = document.getElementById('video');
+    const canvas   = document.getElementById('canvas');
+    const btn      = document.getElementById('capture-btn');
+    const testBtn  = document.getElementById('test-btn');
+    const results  = document.getElementById('results');
 
     let resetTimer;
     function resetUI() {
@@ -50,6 +52,45 @@
       .then(s => video.srcObject = s)
       .catch(e => alert('Error cámara: '+e.message));
 
+    async function upload(blob) {
+      if (!blob) return alert('Error al procesar imagen');
+
+      results.innerHTML = '<p>Procesando...</p>';
+
+      const fd = new FormData();
+      fd.append('image', blob, 'captura.jpg');
+
+      try {
+        const res = await fetch('http://localhost:5000/upload',{ method:'POST', body:fd });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        const d = await res.json();
+
+        results.innerHTML = '';
+        d.products.forEach((p, idx) => {
+          const card = document.createElement('div');
+          card.className = 'product-card';
+          const barcodes = p.visionData.barcodes.map(b => `<li>${b}</li>`).join('') || '<li>—</li>';
+          const logos = p.visionData.logos.map(l => `<li>${l.name} (${l.score.toFixed(2)})</li>`).join('') || '<li>—</li>';
+          const textLines = p.visionData.text.split('\n').filter(Boolean).map(t => `<li>${t}</li>`).join('') || '<li>—</li>';
+          const link = p.offLink ? `<a href="${p.offLink}" target="_blank">Ver en OpenFoodFacts</a>` : 'Sin resultados en OFF';
+          card.innerHTML = `
+            <h3>Producto ${idx+1}: ${p.aiResponse}</h3>
+            <p>${link}</p>
+            <h4>Códigos de barras</h4><ul>${barcodes}</ul>
+            <h4>Logos</h4><ul>${logos}</ul>
+            <h4>Texto OCR</h4><ul>${textLines}</ul>
+          `;
+          results.appendChild(card);
+        });
+
+        resetTimer = setTimeout(resetUI, 10000);
+      } catch(err) {
+        results.innerHTML = '<p>Error</p>';
+        alert('Error: '+err.message);
+        resetTimer = setTimeout(resetUI, 10000);
+      }
+    }
+
     btn.onclick = () => {
       clearTimeout(resetTimer);
       const ctx = canvas.getContext('2d');
@@ -58,44 +99,20 @@
       if (!canvas.width || !canvas.height) return alert('No se pudo capturar la imagen');
 
       ctx.drawImage(video,0,0,canvas.width,canvas.height);
-      canvas.toBlob(async blob => {
-        if (!blob) return alert('Error al procesar imagen');
+      canvas.toBlob(upload, 'image/jpeg');
+    };
 
-        results.innerHTML = '<p>Procesando...</p>';
-
-        const fd = new FormData();
-        fd.append('image', blob, 'captura.jpg');
-
-        try {
-          const res = await fetch('http://localhost:5000/upload',{ method:'POST', body:fd });
-          if (!res.ok) throw new Error((await res.json()).error || res.statusText);
-          const d = await res.json();
-
-          results.innerHTML = '';
-          d.products.forEach((p, idx) => {
-            const card = document.createElement('div');
-            card.className = 'product-card';
-            const barcodes = p.visionData.barcodes.map(b => `<li>${b}</li>`).join('') || '<li>—</li>';
-            const logos = p.visionData.logos.map(l => `<li>${l.name} (${l.score.toFixed(2)})</li>`).join('') || '<li>—</li>';
-            const textLines = p.visionData.text.split('\n').filter(Boolean).map(t => `<li>${t}</li>`).join('') || '<li>—</li>';
-            const link = p.offLink ? `<a href="${p.offLink}" target="_blank">Ver en OpenFoodFacts</a>` : 'Sin resultados en OFF';
-            card.innerHTML = `
-              <h3>Producto ${idx+1}: ${p.aiResponse}</h3>
-              <p>${link}</p>
-              <h4>Códigos de barras</h4><ul>${barcodes}</ul>
-              <h4>Logos</h4><ul>${logos}</ul>
-              <h4>Texto OCR</h4><ul>${textLines}</ul>
-            `;
-            results.appendChild(card);
-          });
-
-          resetTimer = setTimeout(resetUI, 10000);
-        } catch(err) {
-          results.innerHTML = '<p>Error</p>';
-          alert('Error: '+err.message);
-          resetTimer = setTimeout(resetUI, 10000);
-        }
-      }, 'image/jpeg');
+    testBtn.onclick = async () => {
+      clearTimeout(resetTimer);
+      try {
+        const res = await fetch('test-image.png');
+        const blob = await res.blob();
+        upload(blob);
+      } catch(err) {
+        results.innerHTML = '<p>Error</p>';
+        alert('Error: '+err.message);
+        resetTimer = setTimeout(resetUI, 10000);
+      }
     };
   </script>
 </body>
