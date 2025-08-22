@@ -51,7 +51,8 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     try {
       [objResp] = await visionClient.annotateImage({
         image: { content: buffer },
-        features: [ { type: 'OBJECT_LOCALIZATION', maxResults: 10 } ]
+        // Incrementa maxResults para detectar muchos objetos (incluso pequeños)
+        features: [ { type: 'OBJECT_LOCALIZATION', maxResults: 50 } ]
       });
     } catch (err) {
       console.error('Error al conectar con Google Vision:', err.message);
@@ -64,10 +65,19 @@ app.post('/upload', upload.single('image'), async (req, res) => {
       const verts = o.boundingPoly.normalizedVertices || [];
       const xs = verts.map(v => (v.x || 0) * width);
       const ys = verts.map(v => (v.y || 0) * height);
-      const left = Math.max(0, Math.min(...xs));
-      const top = Math.max(0, Math.min(...ys));
-      const right = Math.min(width, Math.max(...xs));
-      const bottom = Math.min(height, Math.max(...ys));
+      let left = Math.max(0, Math.min(...xs));
+      let top = Math.max(0, Math.min(...ys));
+      let right = Math.min(width, Math.max(...xs));
+      let bottom = Math.min(height, Math.max(...ys));
+
+      // Añade un margen alrededor para capturar mejor objetos pequeños
+      const padX = Math.floor((right - left) * 0.1);
+      const padY = Math.floor((bottom - top) * 0.1);
+      left   = Math.max(0, left - padX);
+      top    = Math.max(0, top - padY);
+      right  = Math.min(width, right + padX);
+      bottom = Math.min(height, bottom + padY);
+
       return {
         left: Math.floor(left),
         top: Math.floor(top),
@@ -193,9 +203,10 @@ Tu tarea es devolver SOLO el término de búsqueda más corto y útil para busca
         }
       }
 
-      const offLink = offData?.url || (offData?.code ? `${OFF_PROD_URL}/${offData.code}` : null);
+      const offLink  = offData?.url || (offData?.code ? `${OFF_PROD_URL}/${offData.code}` : null);
+      const offImage = offData?.image_url || offData?.image_front_url || null;
 
-      products.push({ visionData, aiResponse, offData, offLink });
+      products.push({ visionData, aiResponse, offData, offLink, offImage });
     }
 
     // 7) Devolver array de productos
