@@ -3,9 +3,7 @@
   "private": true,
   "workspaces": ["backend"],
   "scripts": {
-    "dev:backend": "node backend/node_modules/nodemon/bin/nodemon.js --quiet backend/index.js",
-    "dev:frontend": "live-server frontend --quiet",
-    "dev": "concurrently --kill-others --raw \"npm run dev:backend\" \"npm run dev:frontend\""
+    "dev": "concurrently --kill-others --raw \"npm --workspace backend --silent run dev\" \"live-server frontend --quiet\""
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
