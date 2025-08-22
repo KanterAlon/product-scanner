@@ -87,8 +87,10 @@
           const logos = p.visionData.logos.map(l => `<li>${l.name} (${l.score.toFixed(2)})</li>`).join('') || '<li>—</li>';
           const textLines = p.visionData.text.split('\n').filter(Boolean).map(t => `<li>${t}</li>`).join('') || '<li>—</li>';
           const link = p.offLink ? `<a href="${p.offLink}" target="_blank">Ver en OpenFoodFacts</a>` : 'Sin resultados en OFF';
+          const image = p.offImage ? `<img src="${p.offImage}" alt="Imagen del producto" style="max-width:100%;"/>` : '';
           card.innerHTML = `
             <h3>Producto ${idx+1}: ${p.aiResponse}</h3>
+            ${image}
             <p>${link}</p>
             <h4>Códigos de barras</h4><ul>${barcodes}</ul>
             <h4>Logos</h4><ul>${logos}</ul>
