@@ -1,7 +1,9 @@
 // backend/index.js
 
 // ⚠️ Solo para desarrollo: desactiva la verificación TLS (no usar en producción)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+if (process.env.NODE_ENV !== 'production') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
 require('dotenv').config();
 
 const path    = require('path');
