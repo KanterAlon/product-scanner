@@ -8,18 +8,12 @@
     body { font-family: Arial,sans-serif; margin:2rem; background:#f9f9f9 }
     h1 { color:#333 }
     #top { display:flex; flex-wrap:wrap; gap:2rem; align-items:flex-start; justify-content:center }
-    #result { display:flex; flex-wrap:wrap; gap:2rem; margin-top:1.5rem }
-    #info { display:flex; flex-direction:column; gap:.5rem; background:#fff; padding:1rem; border:1px solid #ccc; border-radius:4px; margin-bottom:1.5rem }
-    #info .step { display:flex; align-items:center; gap:.5rem }
-    #info .logo { width:40px; height:40px }
-    #info p { margin:0; color:#333 }
-    .panel { flex:1; min-width:280px; min-height:300px; padding:1rem; background:#fff; border:1px solid #ccc; border-radius:4px; overflow:auto }
-    .panel h2 { margin-top:0; color:#555 }
     video,canvas { max-width:300px; border:1px solid #ccc; margin-top:1rem }
     button { margin-top:1rem; padding:0.5rem 1rem }
-    pre { white-space:pre-wrap; background:#f0f0f0; padding:0.5rem; border-radius:4px }
-    #final-term { flex:1; font-size:2rem; font-weight:bold; color:#222; background:#fffbe6; border:2px solid #f0d000; border-radius:4px; padding:1rem; min-height:100px; display:flex; align-items:center; justify-content:center; text-align:center }
-    .arrow { font-size:2rem; display:flex; align-items:center; }
+    #results { display:flex; flex-wrap:wrap; gap:1rem; margin-top:1.5rem }
+    .product-card { background:#fff; border:1px solid #ccc; border-radius:4px; padding:1rem; width:300px }
+    .product-card h3 { margin-top:0 }
+    .product-card ul { padding-left:1.2rem }
   </style>
 </head>
 <body>
@@ -27,82 +21,29 @@
 
   <section id="info">
     <h2>¿Cómo funciona?</h2>
-    <div class="step">
-      <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg" alt="Google" class="logo"/>
-      <p><strong>Google Vision</strong> analiza la foto y reconoce códigos de barras, logos, texto, objetos y etiquetas.</p>
-    </div>
-    <div class="step">
-      <img src="https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg" alt="OpenAI" class="logo"/>
-      <p><strong>OpenAI</strong> toma esos datos y genera un término corto para buscar en la base de productos.</p>
-    </div>
-    <p style="text-align:center; font-size:1.2rem;">📷 → Vision → ChatGPT → 🛒</p>
+    <p>Google Vision analiza la foto para localizar productos. Cada recorte se procesa con Vision, OpenAI y se busca en OpenFoodFacts.</p>
   </section>
+
   <div id="top">
     <div id="camera">
       <video id="video" autoplay playsinline></video><br/>
       <button id="capture-btn">📸 Capturar y Buscar</button>
     </div>
-    <div class="arrow">→</div>
-    <div id="final-term">Esperando captura…</div>
   </div>
-  <div class="arrow" style="justify-content:center;">↓</div>
+
   <canvas id="canvas" style="display:none;"></canvas>
 
-  <div id="result">
-    <div class="panel">
-      <h2>Vision API</h2>
-      <h3>Códigos de barras</h3><ul id="barcode-list"></ul>
-      <h3>Logos</h3><ul id="logo-list"></ul>
-      <h3>Texto OCR</h3><ul id="text-list"></ul>
-      <h3>Web Entities</h3><ul id="webentity-list"></ul>
-      <h3>Labels</h3><ul id="label-list"></ul>
-      <h3>Objects</h3><ul id="object-list"></ul>
-    </div>
-
-    <div class="panel">
-      <h2>OpenAI (IA intermedia)</h2>
-      <details>
-        <summary>Prompt enviado</summary>
-        <pre id="ai-prompt"></pre>
-      </details>
-      <h3>Respuesta de OpenAI</h3>
-      <pre id="ai-response"></pre>
-
-      <h2>OpenFoodFacts</h2>
-      <div id="off-status"></div>
-      <pre id="off-data"></pre>
-
-      <p id="pipeline-summary" style="font-style:italic; color:#444"></p>
-    </div>
-  </div>
+  <div id="results"></div>
 
   <script>
-    const video         = document.getElementById('video');
-    const canvas        = document.getElementById('canvas');
-    const barcodeList   = document.getElementById('barcode-list');
-    const logoList      = document.getElementById('logo-list');
-    const textList      = document.getElementById('text-list');
-    const webEntityList = document.getElementById('webentity-list');
-    const labelList     = document.getElementById('label-list');
-    const objectList    = document.getElementById('object-list');
-    const aiPrompt      = document.getElementById('ai-prompt');
-    const aiResponse    = document.getElementById('ai-response');
-    const finalTerm     = document.getElementById('final-term');
-    const pipelineSummary = document.getElementById('pipeline-summary');
-    const offStatus     = document.getElementById('off-status');
-    const offData       = document.getElementById('off-data');
-    const btn           = document.getElementById('capture-btn');
+    const video   = document.getElementById('video');
+    const canvas  = document.getElementById('canvas');
+    const btn     = document.getElementById('capture-btn');
+    const results = document.getElementById('results');
 
     let resetTimer;
     function resetUI() {
-      [barcodeList,logoList,textList,webEntityList,labelList,objectList]
-        .forEach(ul => ul.innerHTML = '');
-      aiPrompt.textContent      = '';
-      aiResponse.textContent    = '';
-      finalTerm.textContent     = 'Esperando captura…';
-      pipelineSummary.textContent = '';
-      offStatus.textContent     = '';
-      offData.textContent       = '';
+      results.innerHTML = '';
     }
 
     navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } })
@@ -120,15 +61,7 @@
       canvas.toBlob(async blob => {
         if (!blob) return alert('Error al procesar imagen');
 
-        // loading...
-        [barcodeList,logoList,textList,webEntityList,labelList,objectList]
-          .forEach(ul => ul.innerHTML = '<li>Cargando…</li>');
-        aiPrompt.textContent      = '…';
-        aiResponse.textContent    = '…';
-        finalTerm.textContent     = 'Procesando…';
-        pipelineSummary.textContent = '';
-        offStatus.textContent     = 'Buscando…';
-        offData.textContent       = '';
+        results.innerHTML = '<p>Procesando...</p>';
 
         const fd = new FormData();
         fd.append('image', blob, 'captura.jpg');
@@ -138,41 +71,27 @@
           if (!res.ok) throw new Error((await res.json()).error || res.statusText);
           const d = await res.json();
 
-          // Vision
-          barcodeList.innerHTML   = '';
-          d.vision.barcodes.forEach(b => { const li=document.createElement('li'); li.textContent = b; barcodeList.append(li); });
-          logoList.innerHTML      = '';
-          d.vision.logos.forEach(l=>{ const li=document.createElement('li'); li.textContent = `${l.name} (${l.score.toFixed(2)})`; logoList.append(li); });
-          textList.innerHTML      = '';
-          d.vision.text.split('\n').filter(Boolean).forEach(t=>{const li=document.createElement('li'); li.textContent = t; textList.append(li);});
-          webEntityList.innerHTML = '';
-          d.vision.webEnts.forEach(w=>{const li=document.createElement('li'); li.textContent = `${w.desc} (${w.score.toFixed(2)})`; webEntityList.append(li);});
-          labelList.innerHTML     = '';
-          d.vision.labels.forEach(l=>{const li=document.createElement('li'); li.textContent = `${l.desc} (${l.score.toFixed(2)})`; labelList.append(li);});
-          objectList.innerHTML    = '';
-          d.vision.objects.forEach(o=>{const li=document.createElement('li'); li.textContent = o; objectList.append(li);});
-
-          // OpenAI
-          aiPrompt.textContent   = d.ai.prompt;
-          aiResponse.textContent = d.ai.response;
-          finalTerm.textContent  = d.ai.response;
-
-          // Pipeline summary
-          pipelineSummary.textContent = '📷 → Vision → ChatGPT → 🛒 OFF';
-
-          // OpenFoodFacts
-          if (d.off.found) {
-            offStatus.textContent = `✅ Encontrado (método: ${d.off.method})`;
-            offData.textContent   = JSON.stringify(d.off.data, null, 2);
-          } else {
-            offStatus.textContent = `❌ No se encontró (término: "${d.ai.response}")`;
-            offData.textContent   = '';
-          }
+          results.innerHTML = '';
+          d.products.forEach((p, idx) => {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            const barcodes = p.visionData.barcodes.map(b => `<li>${b}</li>`).join('') || '<li>—</li>';
+            const logos = p.visionData.logos.map(l => `<li>${l.name} (${l.score.toFixed(2)})</li>`).join('') || '<li>—</li>';
+            const textLines = p.visionData.text.split('\n').filter(Boolean).map(t => `<li>${t}</li>`).join('') || '<li>—</li>';
+            const link = p.offLink ? `<a href="${p.offLink}" target="_blank">Ver en OpenFoodFacts</a>` : 'Sin resultados en OFF';
+            card.innerHTML = `
+              <h3>Producto ${idx+1}: ${p.aiResponse}</h3>
+              <p>${link}</p>
+              <h4>Códigos de barras</h4><ul>${barcodes}</ul>
+              <h4>Logos</h4><ul>${logos}</ul>
+              <h4>Texto OCR</h4><ul>${textLines}</ul>
+            `;
+            results.appendChild(card);
+          });
 
           resetTimer = setTimeout(resetUI, 10000);
-
         } catch(err) {
-          finalTerm.textContent = 'Error';
+          results.innerHTML = '<p>Error</p>';
           alert('Error: '+err.message);
           resetTimer = setTimeout(resetUI, 10000);
         }
