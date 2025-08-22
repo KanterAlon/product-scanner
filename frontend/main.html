@@ -18,7 +18,9 @@
 </head>
 <body>
   <h1>Detector de Productos</h1>
-
+  <header>
+    <label><input type="checkbox" id="timeout-toggle" checked> Limpiar resultados automáticamente</label>
+  </header>
   <section id="info">
     <h2>¿Cómo funciona?</h2>
     <p>Google Vision analiza la foto para localizar productos. Cada recorte se procesa con Vision, OpenAI y se busca en OpenFoodFacts.</p>
@@ -42,11 +44,23 @@
     const btn      = document.getElementById('capture-btn');
     const testBtn  = document.getElementById('test-btn');
     const results  = document.getElementById('results');
+    const timeoutToggle = document.getElementById('timeout-toggle');
 
     let resetTimer;
     function resetUI() {
       results.innerHTML = '';
     }
+
+    function scheduleReset() {
+      clearTimeout(resetTimer);
+      if (timeoutToggle.checked) {
+        resetTimer = setTimeout(resetUI, 10000);
+      }
+    }
+
+    timeoutToggle.addEventListener('change', () => {
+      if (!timeoutToggle.checked) clearTimeout(resetTimer);
+    });
 
     navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } })
       .then(s => video.srcObject = s)
@@ -82,12 +96,11 @@
           `;
           results.appendChild(card);
         });
-
-        resetTimer = setTimeout(resetUI, 10000);
+        scheduleReset();
       } catch(err) {
         results.innerHTML = '<p>Error</p>';
         alert('Error: '+err.message);
-        resetTimer = setTimeout(resetUI, 10000);
+        scheduleReset();
       }
     }
 
@@ -111,7 +124,7 @@
       } catch(err) {
         results.innerHTML = '<p>Error</p>';
         alert('Error: '+err.message);
-        resetTimer = setTimeout(resetUI, 10000);
+        scheduleReset();
       }
     };
   </script>
