@@ -6,7 +6,7 @@ Este proyecto detecta productos alimenticios usando una foto. El backend usa Goo
 
 1. Copia `.env.example` a `backend/.env` y completa las variables necesarias.
 2. Coloca tus credenciales de Google Vision en `backend/credentials/google-vision.json` (revisa `backend/credentials/README.md`).
-3. Instala dependencias desde la raíz del proyecto:
+3. Instala las dependencias desde la raíz del proyecto. Gracias a [npm workspaces](https://docs.npmjs.com/cli/v10/using-npm/workspaces) esto también instalará las del backend:
    ```bash
    npm install
    ```
