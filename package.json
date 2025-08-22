@@ -1,9 +1,9 @@
 {
   "name": "product-scanner",
   "private": true,
+  "workspaces": ["backend"],
   "scripts": {
-    "postinstall": "npm --prefix backend install --silent",
-    "dev:backend": "npm --prefix backend run dev --silent",
+    "dev:backend": "node backend/node_modules/nodemon/bin/nodemon.js --quiet backend/index.js",
     "dev:frontend": "live-server frontend --quiet",
     "dev": "concurrently --kill-others --raw \"npm run dev:backend\" \"npm run dev:frontend\""
   },
