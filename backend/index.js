@@ -10,6 +10,7 @@ const multer  = require('multer');
 const cors    = require('cors');
 const axios   = require('axios');
 const vision  = require('@google-cloud/vision');
+const sharp   = require('sharp');
 
 const app = express();
 app.use(cors());
@@ -45,41 +46,81 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     }
     const buffer = req.file.buffer;
 
-    // 1) Google Vision con múltiples features
-    let vResp;
+    // 1) Localizar objetos para identificar posibles productos
+    let objResp;
     try {
-      [vResp] = await visionClient.annotateImage({
+      [objResp] = await visionClient.annotateImage({
         image: { content: buffer },
-        features: [
-          { type: 'BARCODE_DETECTION' },
-          { type: 'LOGO_DETECTION',    maxResults: 5 },
-          { type: 'DOCUMENT_TEXT_DETECTION' },
-          { type: 'WEB_DETECTION',     maxResults: 5 },
-          { type: 'LABEL_DETECTION',   maxResults: 10 },
-          { type: 'OBJECT_LOCALIZATION' }
-        ]
+        features: [ { type: 'OBJECT_LOCALIZATION', maxResults: 10 } ]
       });
     } catch (err) {
       console.error('Error al conectar con Google Vision:', err.message);
       return res.status(502).json({ error: 'Google Vision: ' + err.message });
     }
 
-    // 2) Parsear resultados
-    const barcodes = (vResp.barcodeAnnotations || []).map(b => b.rawValue);
-    const logos    = (vResp.logoAnnotations   || []).map(l => ({ name: l.description, score: l.score }));
-    const rawText  = vResp.fullTextAnnotation?.text?.trim() || '';
-    // Mantener siempre el texto OCR para mostrar en la UI y usarlo en prompt
-    const text     = rawText;
-    const webEnts  = (vResp.webDetection?.webEntities || []).map(e => ({ desc: e.description, score: e.score }));
-    const labels   = (vResp.labelAnnotations || []).map(l => ({ desc: l.description, score: l.score }));
-    const objects  = (vResp.localizedObjectAnnotations || []).map(o => o.name);
+    const { width, height } = await sharp(buffer).metadata();
+    const objects = objResp.localizedObjectAnnotations || [];
+    const regions = objects.length ? objects.map(o => {
+      const verts = o.boundingPoly.normalizedVertices || [];
+      const xs = verts.map(v => (v.x || 0) * width);
+      const ys = verts.map(v => (v.y || 0) * height);
+      const left = Math.max(0, Math.min(...xs));
+      const top = Math.max(0, Math.min(...ys));
+      const right = Math.min(width, Math.max(...xs));
+      const bottom = Math.min(height, Math.max(...ys));
+      return {
+        left: Math.floor(left),
+        top: Math.floor(top),
+        width: Math.floor(right - left),
+        height: Math.floor(bottom - top)
+      };
+    }) : [{ left: 0, top: 0, width, height }];
 
-    const visionData = { barcodes, logos, text, webEnts, labels, objects };
+    const products = [];
 
-    // 3) Prompt reforzado para español, priorizando OCR y datos sin inventar
-    const prompt = `
-    Eres un asistente en ESPAÑOL experto en productos alimenticios. Recibes un JSON con datos de Google Vision sobre un envase. Tu tarea es devolver SOLO el término de búsqueda más corto y útil para buscar ese producto en OpenFoodFacts.
-    
+    for (const region of regions) {
+      let cropBuffer;
+      try {
+        cropBuffer = await sharp(buffer).extract(region).toBuffer();
+      } catch (err) {
+        console.error('Error al recortar imagen:', err.message);
+        continue;
+      }
+
+      // 2) Analizar recorte con todas las features
+      let vResp;
+      try {
+        [vResp] = await visionClient.annotateImage({
+          image: { content: cropBuffer },
+          features: [
+            { type: 'BARCODE_DETECTION' },
+            { type: 'LOGO_DETECTION',    maxResults: 5 },
+            { type: 'DOCUMENT_TEXT_DETECTION' },
+            { type: 'WEB_DETECTION',     maxResults: 5 },
+            { type: 'LABEL_DETECTION',   maxResults: 10 },
+            { type: 'OBJECT_LOCALIZATION' }
+          ]
+        });
+      } catch (err) {
+        console.error('Error Vision en recorte:', err.message);
+        continue;
+      }
+
+      // 3) Parsear resultados de Vision
+      const barcodes = (vResp.barcodeAnnotations || []).map(b => b.rawValue);
+      const logos    = (vResp.logoAnnotations   || []).map(l => ({ name: l.description, score: l.score }));
+      const text     = vResp.fullTextAnnotation?.text?.trim() || '';
+      const webEnts  = (vResp.webDetection?.webEntities || []).map(e => ({ desc: e.description, score: e.score }));
+      const labels   = (vResp.labelAnnotations || []).map(l => ({ desc: l.description, score: l.score }));
+      const objs     = (vResp.localizedObjectAnnotations || []).map(o => o.name);
+
+      const visionData = { barcodes, logos, text, webEnts, labels, objects: objs };
+
+      // 4) Prompt para OpenAI
+      const prompt = `
+    Eres un asistente en ESPAÑOL experto en productos alimenticios. Recibes un JSON con datos de Google Vision sobre un envase.
+Tu tarea es devolver SOLO el término de búsqueda más corto y útil para buscar ese producto en OpenFoodFacts.
+
     ✅ REGLAS CLARAS:
     1. Usa el texto OCR (\`text\`) como fuente PRINCIPAL para identificar el nombre genérico.
        - Si hay varias líneas, elige la más descriptiva en ESPAÑOL que indique qué es el producto.
@@ -90,79 +131,75 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     5. Usa \`webEnts\` y \`labels\` solo como APOYO para confirmar el OCR, NUNCA como reemplazo.
     6. No inventes datos. Si no está claro, deja fuera esa parte.
     7. Devuelve SOLO el término limpio, sin comillas ni explicaciones.
-    
+
     ✅ EJEMPLOS:
     - "Barritas Íntegra de Proteína con Arándanos y Semillas" → Barrita Íntegra
     - "Font Vella Agua Mineral Natural" (con logo Font Vella) → Font Vella Agua Mineral
     - "Nestlé Chocolate KitKat 4 barras" (con logo KitKat) → KitKat
-    
+
     Ahora, procesa este JSON y devuelve SOLO la línea con el término final (sin comillas ni nada más):
-    
+
     \`\`\`json
     ${JSON.stringify(visionData, null, 2)}
     \`\`\`
     `.trim();
-    
 
-    // 4) Chat completions con gpt-3.5-turbo
-    let aiResp;
-    try {
-      aiResp = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          model: 'gpt-3.5-turbo',
-          messages: [
-            { role: 'system', content: 'Eres un asistente que genera términos de búsqueda para OpenFoodFacts, en español y con marcas reales.' },
-            { role: 'user',   content: prompt }
-          ],
-          temperature: 0.2,
-          max_tokens: 32
-        },
-        {
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-          }
-        }
-      );
-    } catch (err) {
-      console.error('Error al conectar con OpenAI:', err.message);
-      return res.status(502).json({ error: 'OpenAI: ' + err.message });
-    }
-
-    const aiResponse = aiResp.data.choices[0].message.content.trim();
-
-    // 5) Intento por código de barras
-    let offData   = null;
-    let offMethod = null;
-
-    if (barcodes.length) {
+      // 5) Llamada a OpenAI
+      let aiResp;
       try {
-        const byCode = await axios.get(`${OFF_PROD_URL}/${encodeURIComponent(barcodes[0])}.json`);
-        if (byCode.data.status === 1) {
-          offData   = byCode.data.product;
-          offMethod = 'barcode';
-        }
+        aiResp = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            model: 'gpt-3.5-turbo',
+            messages: [
+              { role: 'system', content: 'Eres un asistente que genera términos de búsqueda para OpenFoodFacts, en español y con marcas reales.' },
+              { role: 'user',   content: prompt }
+            ],
+            temperature: 0.2,
+            max_tokens: 32
+          },
+          {
+            headers: {
+              'Content-Type':  'application/json',
+              'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+            }
+          }
+        );
       } catch (err) {
-        console.error('Error en OpenFoodFacts por código de barras:', err.message);
+        console.error('Error al conectar con OpenAI:', err.message);
+        continue;
       }
+
+      const aiResponse = aiResp.data.choices[0].message.content.trim();
+
+      // 6) Consultar OpenFoodFacts
+      let offData = null;
+      for (const code of barcodes) {
+        try {
+          const byCode = await axios.get(`${OFF_PROD_URL}/${encodeURIComponent(code)}.json`);
+          if (byCode.data.status === 1) {
+            offData = byCode.data.product;
+            break;
+          }
+        } catch (err) {
+          console.error('Error en OpenFoodFacts por código de barras:', err.message);
+        }
+      }
+
+      if (!offData) {
+        const offSearch = await searchOFF(aiResponse);
+        if (offSearch) {
+          offData = offSearch.products?.[0] || offSearch;
+        }
+      }
+
+      const offLink = offData?.url || (offData?.code ? `${OFF_PROD_URL}/${offData.code}` : null);
+
+      products.push({ visionData, aiResponse, offData, offLink });
     }
 
-    // 6) Fallback con término IA en español
-    if (!offData) {
-      const offSearch = await searchOFF(aiResponse);
-      if (offSearch) {
-        offData   = offSearch.products?.[0] || offSearch;
-        offMethod = 'search';
-      }
-    }
-
-    // 7) Responder con pipeline completo
-    res.json({
-      vision: visionData,
-      ai: { prompt, response: aiResponse },
-      off: { found: !!offData, method: offMethod, data: offData }
-    });
+    // 7) Devolver array de productos
+    res.json({ products });
   } catch (err) {
     console.error('Error en /upload:', err.message);
     res.status(500).json({ error: err.message || 'Internal error' });
