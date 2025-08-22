@@ -1,27 +1,68 @@
 # Product Scanner
 
-Este proyecto detecta productos alimenticios usando una foto. El backend usa Google Vision para reconocer texto, códigos de barras y logos, luego utiliza OpenAI para generar un término de búsqueda y consulta OpenFoodFacts para obtener información del producto.
+Aplicación demo que reconoce productos alimenticios a partir de una fotografía y devuelve información pública de OpenFoodFacts.
+
+## Características
+- Backend en Node.js que usa Google Cloud Vision para detectar texto, códigos de barras, logos y objetos.
+- Genera un término de búsqueda mediante OpenAI.
+- Consulta OpenFoodFacts y expone los datos como JSON.
+- Frontend estático mínimo para probar el flujo completo.
+
+## Requisitos
+- [Node.js](https://nodejs.org/) ≥ 18 y npm.
+- Cuenta de Google Cloud con la API de Vision habilitada.
+- Clave de API de OpenAI.
 
 ## Instalación
-
-1. Copia `.env.example` a `backend/.env` y completa las variables necesarias.
-2. Coloca tus credenciales de Google Vision en `backend/credentials/google-vision.json` (revisa `backend/credentials/README.md`).
-3. Instala las dependencias desde la raíz del proyecto. Gracias a [npm workspaces](https://docs.npmjs.com/cli/v10/using-npm/workspaces) esto también instalará las del backend:
+1. Clona este repositorio.
+2. Copia `backend/.env.example` a `backend/.env` y completa las variables:
+   ```env
+   PORT=5000
+   OPENAI_API_KEY=tu_clave_de_openai
+   OPENFOODFACTS_PRODUCT_URL=https://world.openfoodfacts.org/api/v0/product
+   OPENFOODFACTS_SEARCH_URL=https://world.openfoodfacts.org/cgi/search.pl
+   ```
+3. Descarga una clave de servicio de Google Cloud y guárdala como `backend/credentials/google-vision.json`. **Nunca** la subas al repositorio.
+4. Instala dependencias desde la raíz (usa npm workspaces):
    ```bash
    npm install
    ```
 
-## Uso
-
-Levanta el backend y un servidor simple para el frontend con:
+## Ejecución
+Inicia el backend y un servidor para el frontend:
 ```bash
 npm run dev
 ```
-Luego abre `http://127.0.0.1:8080/main.html` en un navegador para probar la aplicación.
+El backend quedará en `http://localhost:5000` y el frontend en `http://localhost:8080/main.html`.
 
-## Variables de entorno
+## Ejemplo de uso
+Con el servidor en marcha puedes probar el endpoint `/upload` con el script incluido:
+```bash
+examples/curl-upload.sh frontend/test-image.png
+```
+Esto envía la imagen y devuelve un JSON similar a:
+```json
+{
+  "products": [
+    {
+      "aiResponse": "Ejemplo de producto",
+      "offData": { "code": "0000000000000", "product_name": "Producto" }
+    }
+  ]
+}
+```
 
-Revisa `backend/.env.example` para conocer todas las variables necesarias:
-- `PORT` puerto del servidor.
-- `OPENAI_API_KEY` clave de API para OpenAI.
-- `OPENFOODFACTS_PRODUCT_URL` y `OPENFOODFACTS_SEARCH_URL` URLs de la API de OpenFoodFacts.
+## Estructura del proyecto
+```
+backend/    # API Node.js
+frontend/   # HTML de prueba
+examples/   # Scripts y ejemplos de consumo
+```
+
+## Variables y credenciales
+- `backend/.env` y `backend/credentials/google-vision.json` están ignorados por git.
+- Utiliza un gestor de secretos o variables de entorno en producción.
+- El TLS solo se desactiva cuando `NODE_ENV` ≠ `production`.
+
+---
+Este repositorio es solo un ejemplo educativo; no se recomienda su uso directo en producción.
