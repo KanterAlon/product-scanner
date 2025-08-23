@@ -48,17 +48,21 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     }
     const buffer = req.file.buffer;
 
+    // Preparar respuesta en streaming (NDJSON)
+    res.setHeader('Content-Type', 'application/x-ndjson');
+
     // 1) Localizar objetos para identificar posibles productos
     let objResp;
     try {
       [objResp] = await visionClient.annotateImage({
         image: { content: buffer },
-        // Incrementa maxResults para detectar muchos objetos (incluso pequeños)
-        features: [ { type: 'OBJECT_LOCALIZATION', maxResults: 50 } ]
+        // MaxResults alto para detectar objetos pequeños y grandes
+        features: [ { type: 'OBJECT_LOCALIZATION', maxResults: 100 } ]
       });
     } catch (err) {
       console.error('Error al conectar con Google Vision:', err.message);
-      return res.status(502).json({ error: 'Google Vision: ' + err.message });
+      res.status(502).end(JSON.stringify({ error: 'Google Vision: ' + err.message }) + '\n');
+      return;
     }
 
     const { width, height } = await sharp(buffer).metadata();
@@ -88,14 +92,18 @@ app.post('/upload', upload.single('image'), async (req, res) => {
       };
     }) : [{ left: 0, top: 0, width, height }];
 
-    const products = [];
+    // Enviar conteo de regiones detectadas
+    res.write(JSON.stringify({ type: 'count', count: regions.length }) + '\n');
 
-    for (const region of regions) {
+    for (let idx = 0; idx < regions.length; idx++) {
+      const region = regions[idx];
+
       let cropBuffer;
       try {
         cropBuffer = await sharp(buffer).extract(region).toBuffer();
       } catch (err) {
         console.error('Error al recortar imagen:', err.message);
+        res.write(JSON.stringify({ type: 'product', index: idx, aiResponse: 'error', title: 'Error', offImage: null }) + '\n');
         continue;
       }
 
@@ -208,14 +216,26 @@ Tu tarea es devolver SOLO el término de búsqueda más corto y útil para busca
       const offLink  = offData?.url || (offData?.code ? `${OFF_PROD_URL}/${offData.code}` : null);
       const offImage = offData?.image_url || offData?.image_front_url || null;
 
-      products.push({ visionData, aiResponse, offData, offLink, offImage });
+      const title = offData?.product_name || aiResponse;
+
+      res.write(
+        JSON.stringify({
+          type: 'product',
+          index: idx,
+          aiResponse,
+          title,
+          offImage,
+          offLink
+        }) + '\n'
+      );
     }
 
-    // 7) Devolver array de productos
-    res.json({ products });
+    // 7) Finalizar stream
+    res.write(JSON.stringify({ type: 'done' }) + '\n');
+    res.end();
   } catch (err) {
     console.error('Error en /upload:', err.message);
-    res.status(500).json({ error: err.message || 'Internal error' });
+    res.status(500).end(JSON.stringify({ error: err.message || 'Internal error' }) + '\n');
   }
 });
 

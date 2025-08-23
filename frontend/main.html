@@ -14,12 +14,14 @@
     .product-card { background:#fff; border:1px solid #ccc; border-radius:4px; padding:1rem; width:300px }
     .product-card h3 { margin-top:0 }
     .product-card ul { padding-left:1.2rem }
+    #status { margin-left:1rem; font-style:italic }
   </style>
 </head>
 <body>
   <h1>Detector de Productos</h1>
   <header>
     <label><input type="checkbox" id="timeout-toggle" checked> Limpiar resultados automáticamente</label>
+    <p id="status"></p>
   </header>
   <section id="info">
     <h2>¿Cómo funciona?</h2>
@@ -45,10 +47,12 @@
     const testBtn  = document.getElementById('test-btn');
     const results  = document.getElementById('results');
     const timeoutToggle = document.getElementById('timeout-toggle');
+    const status   = document.getElementById('status');
 
     let resetTimer;
     function resetUI() {
       results.innerHTML = '';
+      status.textContent = '';
     }
 
     function scheduleReset() {
@@ -69,38 +73,63 @@
     async function upload(blob) {
       if (!blob) return alert('Error al procesar imagen');
 
-      results.innerHTML = '<p>Procesando...</p>';
+      results.innerHTML = '';
+      status.textContent = 'Analizando imagen...';
 
       const fd = new FormData();
       fd.append('image', blob, 'captura.jpg');
 
       try {
-        const res = await fetch('http://localhost:5000/upload',{ method:'POST', body:fd });
-        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
-        const d = await res.json();
+        const res = await fetch('http://localhost:5000/upload', { method:'POST', body: fd });
+        if (!res.ok) throw new Error('HTTP '+res.status);
 
-        results.innerHTML = '';
-        d.products.forEach((p, idx) => {
-          const card = document.createElement('div');
-          card.className = 'product-card';
-          const barcodes = p.visionData.barcodes.map(b => `<li>${b}</li>`).join('') || '<li>—</li>';
-          const logos = p.visionData.logos.map(l => `<li>${l.name} (${l.score.toFixed(2)})</li>`).join('') || '<li>—</li>';
-          const textLines = p.visionData.text.split('\n').filter(Boolean).map(t => `<li>${t}</li>`).join('') || '<li>—</li>';
-          const link = p.offLink ? `<a href="${p.offLink}" target="_blank">Ver en OpenFoodFacts</a>` : 'Sin resultados en OFF';
-          const image = p.offImage ? `<img src="${p.offImage}" alt="Imagen del producto" style="max-width:100%;"/>` : '';
-          card.innerHTML = `
-            <h3>Producto ${idx+1}: ${p.aiResponse}</h3>
-            ${image}
-            <p>${link}</p>
-            <h4>Códigos de barras</h4><ul>${barcodes}</ul>
-            <h4>Logos</h4><ul>${logos}</ul>
-            <h4>Texto OCR</h4><ul>${textLines}</ul>
-          `;
-          results.appendChild(card);
-        });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let total = 0;
+        const cards = [];
+        let processed = 0;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const msg = JSON.parse(line);
+            if (msg.type === 'count') {
+              total = msg.count;
+              status.textContent = `Detectados ${total} posibles productos...`;
+              for (let i = 0; i < total; i++) {
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                card.innerHTML = '<p>Cargando...</p>';
+                results.appendChild(card);
+                cards.push(card);
+              }
+            } else if (msg.type === 'product') {
+              processed++;
+              status.textContent = `Producto ${processed}/${total} procesado`;
+              const card = cards[msg.index];
+              const image = msg.offImage ? `<img src="${msg.offImage}" alt="Imagen del producto" style="max-width:100%;"/>` : '';
+              const link = msg.offLink ? `<a href="${msg.offLink}" target="_blank">Ver en OpenFoodFacts</a>` : '';
+              card.innerHTML = `
+                <h3>${msg.title}</h3>
+                <p>Parámetro: ${msg.aiResponse}</p>
+                ${image}
+                ${link}
+              `;
+            } else if (msg.type === 'done') {
+              status.textContent = 'Procesamiento completado';
+            }
+          }
+        }
         scheduleReset();
-      } catch(err) {
+      } catch (err) {
         results.innerHTML = '<p>Error</p>';
+        status.textContent = 'Error';
         alert('Error: '+err.message);
         scheduleReset();
       }
