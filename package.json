@@ -3,7 +3,7 @@
   "private": true,
   "workspaces": ["backend"],
   "scripts": {
-    "dev": "concurrently --kill-others --raw \"npm --workspace backend --silent run dev\" \"live-server frontend --quiet\""
+    "dev": "concurrently --kill-others --raw \"npm --workspace backend --silent run dev\" \"live-server frontend --quiet --mount=/examples:../examples\""
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
