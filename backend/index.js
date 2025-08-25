@@ -13,6 +13,8 @@ const cors    = require('cors');
 const axios   = require('axios');
 const vision  = require('@google-cloud/vision');
 const sharp   = require('sharp');
+const OpenAI = require("openai");
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 const app = express();
 app.use(cors());
@@ -165,32 +167,27 @@ Tu tarea es devolver SOLO el término de búsqueda más corto y útil para busca
     `.trim();
 
       // 5) Llamada a OpenAI
+      if (!openai) {
+        console.error('Error al conectar con OpenAI: falta OPENAI_API_KEY');
+        continue;
+      }
       let aiResp;
       try {
-        aiResp = await axios.post(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            model: 'gpt-3.5-turbo',
-            messages: [
-              { role: 'system', content: 'Eres un asistente que genera términos de búsqueda para OpenFoodFacts, en español y con marcas reales.' },
-              { role: 'user',   content: prompt }
-            ],
-            temperature: 0.2,
-            max_tokens: 32
-          },
-          {
-            headers: {
-              'Content-Type':  'application/json',
-              'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-            }
-          }
-        );
+        aiResp = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'Eres un asistente que genera términos de búsqueda para OpenFoodFacts, en español y con marcas reales.' },
+            { role: 'user',   content: prompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 32
+        });
       } catch (err) {
-        console.error('Error al conectar con OpenAI:', err.message);
+        console.error('Error al conectar con OpenAI:', err.response?.data || err.error?.message || err.message);
         continue;
       }
 
-      const aiResponse = aiResp.data.choices[0].message.content.trim();
+      const aiResponse = aiResp.choices[0].message.content.trim();
 
       // 6) Consultar OpenFoodFacts
       let offData = null;
