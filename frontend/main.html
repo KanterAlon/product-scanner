@@ -149,7 +149,7 @@
     testBtn.onclick = async () => {
       clearTimeout(resetTimer);
       try {
-        const res = await fetch('test-image.png');
+        const res = await fetch('/examples/test-image.png');
         const blob = await res.blob();
         upload(blob);
       } catch(err) {

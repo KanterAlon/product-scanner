@@ -38,7 +38,7 @@ El backend quedará en `http://localhost:5000` y el frontend en `http://localhos
 ## Ejemplo de uso
 Con el servidor en marcha puedes probar el endpoint `/upload` con el script incluido:
 ```bash
-examples/curl-upload.sh frontend/test-image.png
+examples/curl-upload.sh examples/test-image.png
 ```
 Esto envía la imagen y devuelve un JSON similar a:
 ```json
