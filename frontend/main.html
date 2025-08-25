@@ -151,7 +151,16 @@
       try {
         const res = await fetch('/examples/test-image.png');
         const blob = await res.blob();
-        upload(blob);
+        const img = new Image();
+        img.onload = () => {
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(img.src);
+          canvas.toBlob(upload, 'image/jpeg');
+        };
+        img.src = URL.createObjectURL(blob);
       } catch(err) {
         results.innerHTML = '<p>Error</p>';
         alert('Error: '+err.message);
